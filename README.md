@@ -128,5 +128,4 @@ educational use. It is not a medical device and has not been reviewed or
 approved by any regulatory body. See the warning at the top — always confirm
 doses with your care team.
 
-_License: see `LICENSE` (choose one — MIT is a good default for a small personal
-project)._
+_License: see `LICENSE` 

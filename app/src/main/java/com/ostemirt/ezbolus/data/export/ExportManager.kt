@@ -93,6 +93,7 @@ object ExportJson {
             put("alertReArmOnRise", settings.alertReArmOnRise)
             put("alertStyle", settings.alertStyle.name)
             put("dosingIncrement", settings.dosingIncrement)
+            put("libreStalenessMinutes", settings.libreStalenessMinutes)
         }
         val intakesJson = JSONArray().apply {
             for (i in intakes) put(
@@ -129,6 +130,8 @@ object ExportJson {
         alertStyle = NotificationStyle.entries.firstOrNull { it.name == o.optString("alertStyle") }
             ?: AppSettings.Default.alertStyle,
         dosingIncrement = o.getDouble("dosingIncrement"),
+        libreStalenessMinutes = if (o.has("libreStalenessMinutes"))
+            o.getInt("libreStalenessMinutes") else AppSettings.Default.libreStalenessMinutes,
     )
 
     fun parseIntakes(arr: JSONArray): List<Intake> = buildList {

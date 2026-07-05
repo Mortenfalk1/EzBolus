@@ -3,6 +3,8 @@ package com.ostemirt.ezbolus.ui.settings
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.ostemirt.ezbolus.data.libre.LibreRepository
+import com.ostemirt.ezbolus.data.libre.LibreResult
 import com.ostemirt.ezbolus.data.settings.AppSettings
 import com.ostemirt.ezbolus.data.settings.CurveModelKind
 import com.ostemirt.ezbolus.data.settings.GlucoseUnit
@@ -17,11 +19,19 @@ import kotlinx.coroutines.launch
 class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = SettingsRepository(app.applicationContext)
     private val scheduler = IobAlarmScheduler(app.applicationContext)
+    private val libreRepo = LibreRepository(app.applicationContext)
 
     val state: StateFlow<AppSettings> = repo.settings.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = AppSettings.Default,
+    )
+
+    val libreConnected: StateFlow<Boolean> = libreRepo.isConnected.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5_000), false,
+    )
+    val libreEmail: StateFlow<String?> = libreRepo.connectedEmail.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5_000), null,
     )
 
     private fun launchUpdate(transform: (AppSettings) -> AppSettings) = viewModelScope.launch {
@@ -43,4 +53,12 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun changeGlucoseUnit(to: GlucoseUnit) = viewModelScope.launch {
         repo.changeGlucoseUnit(to); scheduler.reschedule()
     }
+
+    fun setLibreStaleness(v: Int) = launchUpdate { it.copy(libreStalenessMinutes = v) }
+
+    /** Connect LibreLinkUp; [onResult] reports success or a mapped error to the UI. */
+    fun connectLibre(email: String, password: String, onResult: (LibreResult<Unit>) -> Unit) =
+        viewModelScope.launch { onResult(libreRepo.connect(email, password)) }
+
+    fun disconnectLibre() = viewModelScope.launch { libreRepo.disconnect() }
 }

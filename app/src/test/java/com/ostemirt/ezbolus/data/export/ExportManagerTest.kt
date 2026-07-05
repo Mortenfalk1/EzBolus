@@ -30,6 +30,7 @@ class ExportManagerTest {
         alertReArmOnRise = true,
         alertStyle = NotificationStyle.ALARM,
         dosingIncrement = 0.5,
+        libreStalenessMinutes = 6,
     )
 
     private val sampleIntakes = listOf(

@@ -38,6 +38,11 @@ data class AppSettings(
      *  pens (e.g. NovoPen Echo), 0.1 for pumps. Drives the round-up / round-down
      *  options shown on the result card. */
     val dosingIncrement: Double,
+
+    /** LibreLinkUp glucose autofill: how old a fetched reading may be (in minutes)
+     *  before the calculator warns / refuses to pre-fill it. Follower-feed readings
+     *  lag real blood glucose, so a low value is safer. */
+    val libreStalenessMinutes: Int,
 ) {
     fun toEngineCurve(): CurveModel = when (curveModel) {
         CurveModelKind.LINEAR -> CurveModel.Linear(actionTimeHours)
@@ -60,6 +65,7 @@ data class AppSettings(
             alertReArmOnRise = true,
             alertStyle = NotificationStyle.GENTLE,   // README default; user can escalate
             dosingIncrement = 1.0,      // whole-unit pen — user's stated device
+            libreStalenessMinutes = 8,  // conservative default for follower-feed lag
         )
     }
 }

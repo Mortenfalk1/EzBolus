@@ -32,6 +32,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,7 +69,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ostemirt.ezbolus.data.libre.LibreReading
+import com.ostemirt.ezbolus.data.libre.LibreResult
+import com.ostemirt.ezbolus.data.libre.LibreTrend
 import com.ostemirt.ezbolus.data.settings.AppSettings
+import com.ostemirt.ezbolus.data.settings.GlucoseUnit
 import com.ostemirt.ezbolus.engine.BolusResult
 import com.ostemirt.ezbolus.engine.computeBolus
 import com.ostemirt.ezbolus.engine.computeCorrectionOnly
@@ -76,6 +81,7 @@ import com.ostemirt.ezbolus.ui.components.FirstRunNudge
 import com.ostemirt.ezbolus.ui.components.IobRing
 import com.ostemirt.ezbolus.ui.theme.EzBolusText
 import kotlinx.coroutines.launch
+import java.time.Instant
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -97,6 +103,10 @@ fun CalculatorScreen(
     var result by remember { mutableStateOf<BolusResult?>(null) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var correctionOnly by remember { mutableStateOf(false) }
+
+    val libreConnected by vm.libreConnected.collectAsStateWithLifecycle()
+    var libreBusy by remember { mutableStateOf(false) }
+    var libreChip by remember { mutableStateOf<LibreChip?>(null) }
 
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -120,6 +130,27 @@ fun CalculatorScreen(
         result = null
         errorText = null
         correctionOnly = false
+        libreChip = null
+    }
+
+    fun fetchLibre() {
+        libreBusy = true
+        libreChip = null
+        val unit = s.glucoseUnit
+        val cutoff = s.libreStalenessMinutes
+        vm.fetchLibreGlucose { outcome ->
+            libreBusy = false
+            when (outcome) {
+                is LibreResult.Ok -> {
+                    val r = outcome.value
+                    glucoseText = formatLibreForInput(r, unit)   // pre-fill; user still reviews
+                    libreChip = libreChipFor(r, r.ageMinutes(Instant.now()), unit, cutoff)
+                }
+                is LibreResult.Err -> {
+                    libreChip = LibreChip(main = outcome.message, mainIsError = true, note = null, warning = null)
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -165,6 +196,10 @@ fun CalculatorScreen(
                         glucoseText = glucoseText,
                         correctionOnly = correctionOnly,
                         errorText = errorText,
+                        libreConnected = libreConnected,
+                        libreBusy = libreBusy,
+                        libreChip = libreChip,
+                        onFetchLibre = ::fetchLibre,
                         onOpenSettings = onOpenSettings,
                         onCarbsChange = { carbsText = it.filterNumeric() },
                         onGlucoseChange = { glucoseText = it.filterNumeric() },
@@ -246,6 +281,10 @@ private fun InputPage(
     glucoseText: String,
     correctionOnly: Boolean,
     errorText: String?,
+    libreConnected: Boolean,
+    libreBusy: Boolean,
+    libreChip: LibreChip?,
+    onFetchLibre: () -> Unit,
     onOpenSettings: () -> Unit,
     onCarbsChange: (String) -> Unit,
     onGlucoseChange: (String) -> Unit,
@@ -278,6 +317,10 @@ private fun InputPage(
             unitLabel = settings.glucoseUnit.label,
         )
 
+        if (libreConnected) {
+            LibreFetchRow(busy = libreBusy, chip = libreChip, onFetch = onFetchLibre)
+        }
+
         RatiosCard(iob, iobFraction)
 
         CalculateButton(
@@ -294,6 +337,89 @@ private fun InputPage(
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium,
             )
+        }
+    }
+}
+
+// ---------- LibreLinkUp fetch (glucose autofill) ----------
+
+/** State for the small chip shown under the glucose field after a Libre fetch. */
+private data class LibreChip(
+    val main: String,        // value + age + trend, OR an error message
+    val mainIsError: Boolean,
+    val note: String?,       // neutral secondary line (point-of-use disclaimer)
+    val warning: String?,    // red secondary line (stale / rapid trend)
+)
+
+private fun formatLibreForInput(r: LibreReading, unit: GlucoseUnit): String =
+    // Force a dot decimal separator (java.util.Locale.US) so the pre-filled value
+    // parses regardless of device locale — e.g. Danish would otherwise write "6,2",
+    // which the calculator's toDoubleOrNull() rejects.
+    if (unit == GlucoseUnit.MMOL_L) "%.1f".format(java.util.Locale.US, r.mmol) else r.mgdl.toString()
+
+private fun libreChipFor(r: LibreReading, ageMin: Long, unit: GlucoseUnit, cutoffMin: Int): LibreChip {
+    val ageText = if (ageMin <= 0L) "just now" else "$ageMin min ago"
+    val trendText = if (r.trend == LibreTrend.UNKNOWN) "" else " · ${r.trend.arrow} ${r.trend.label}"
+    val main = "${formatLibreForInput(r, unit)} ${unit.label} · $ageText$trendText"
+    val warning = when {
+        ageMin > cutoffMin ->
+            "This reading is $ageMin min old (your cutoff is $cutoffMin min). Check again " +
+                "or fingerstick before dosing."
+        r.trend.isRapid ->
+            "Glucose is ${r.trend.label} — the sensor lags real blood glucose, so a " +
+                "correction may over- or under-shoot. Consider a fingerstick."
+        else -> null
+    }
+    return LibreChip(
+        main = main,
+        mainIsError = false,
+        note = "From LibreLinkUp (a follower feed, not a primary monitor).",
+        warning = warning,
+    )
+}
+
+@Composable
+private fun LibreFetchRow(busy: Boolean, chip: LibreChip?, onFetch: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedButton(
+            onClick = onFetch,
+            enabled = !busy,
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(
+                if (busy) "  Fetching from Libre…" else "  Fetch glucose from Libre",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+        chip?.let { c ->
+            Text(
+                c.main,
+                fontSize = 12.sp,
+                fontWeight = if (c.mainIsError) FontWeight.Normal else FontWeight.Medium,
+                color = if (c.mainIsError) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+            c.warning?.let { w ->
+                Text(
+                    w,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
+            c.note?.let { n ->
+                Text(
+                    n,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
         }
     }
 }

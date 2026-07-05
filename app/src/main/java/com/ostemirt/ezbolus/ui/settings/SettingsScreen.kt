@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,6 +63,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.core.content.ContextCompat
 import com.ostemirt.ezbolus.data.export.ExportManager
+import com.ostemirt.ezbolus.data.libre.LibreResult
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import com.ostemirt.ezbolus.data.settings.CurveModelKind
@@ -169,6 +172,9 @@ fun SettingsScreen(
                 )
             }
 
+            // LibreLinkUp glucose autofill
+            LibreLinkUpSection(vm = vm, stalenessMinutes = s.libreStalenessMinutes)
+
             // Backup / restore
             BackupSection()
 
@@ -261,6 +267,157 @@ private fun BackupSection() {
         }
     }
 }
+
+// ---------- LibreLinkUp glucose autofill ----------
+
+@Composable
+private fun LibreLinkUpSection(vm: SettingsViewModel, stalenessMinutes: Int) {
+    val connected by vm.libreConnected.collectAsStateWithLifecycle()
+    val email by vm.libreEmail.collectAsStateWithLifecycle()
+    SectionCard(
+        title = "LibreLinkUp glucose autofill",
+        blurb = "Optional. Pull your current FreeStyle Libre reading into the " +
+            "calculator with one tap, using your LibreLinkUp account. It's a shared " +
+            "follower feed that lags real blood glucose — treat the value as a " +
+            "starting point and fingerstick if it looks off.",
+    ) {
+        if (connected) {
+            LibreConnected(
+                email = email,
+                stalenessMinutes = stalenessMinutes,
+                onDisconnect = vm::disconnectLibre,
+                onStalenessChange = vm::setLibreStaleness,
+            )
+        } else {
+            LibreDisconnected(onConnect = vm::connectLibre)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LibreDisconnected(
+    onConnect: (String, String, (LibreResult<Unit>) -> Unit) -> Unit,
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it; error = null },
+            label = { Text("LibreLinkUp email", fontSize = 12.sp) },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            colors = libreFieldColors(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it; error = null },
+            label = { Text("Password", fontSize = 12.sp) },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            shape = RoundedCornerShape(12.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            colors = libreFieldColors(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Button(
+            onClick = {
+                busy = true
+                error = null
+                onConnect(email.trim(), password) { result ->
+                    busy = false
+                    // On success the section swaps to the connected view automatically.
+                    if (result is LibreResult.Err) error = result.message
+                }
+            },
+            enabled = !busy && email.isNotBlank() && password.isNotBlank(),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (busy) "Connecting…" else "Connect") }
+
+        error?.let {
+            Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
+@Composable
+private fun LibreConnected(
+    email: String?,
+    stalenessMinutes: Int,
+    onDisconnect: () -> Unit,
+    onStalenessChange: (Int) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Connected",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                if (!email.isNullOrBlank()) {
+                    Text(email, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            TextButton(onClick = onDisconnect) {
+                Text("Disconnect", color = MaterialTheme.colorScheme.error)
+            }
+        }
+        IntField(
+            label = "Warn / refuse readings older than",
+            value = stalenessMinutes,
+            suffix = "min",
+            onCommit = onStalenessChange,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun IntField(label: String, value: Int, suffix: String, onCommit: (Int) -> Unit) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    LaunchedEffect(value) { text = value.toString() }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { new ->
+            val digits = new.filter { it.isDigit() }.take(3)
+            text = digits
+            digits.toIntOrNull()?.let { if (it in 1..999) onCommit(it) }
+        },
+        label = { Text(label, fontSize = 11.sp) },
+        trailingIcon = {
+            Text(
+                suffix,
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 12.dp),
+            )
+        },
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        colors = libreFieldColors(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun libreFieldColors() = OutlinedTextFieldDefaults.colors(
+    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+)
 
 // ---------- IOB alert section (with permission handling) ----------
 

@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ostemirt.ezbolus.data.db.IntakeRepository
+import com.ostemirt.ezbolus.data.libre.LibreReading
+import com.ostemirt.ezbolus.data.libre.LibreRepository
+import com.ostemirt.ezbolus.data.libre.LibreResult
 import com.ostemirt.ezbolus.data.settings.AppSettings
 import com.ostemirt.ezbolus.data.settings.GlucoseUnit
 import com.ostemirt.ezbolus.data.settings.SettingsRepository
@@ -25,6 +28,17 @@ class CalculatorViewModel(app: Application) : AndroidViewModel(app) {
     private val settingsRepo = SettingsRepository(app.applicationContext)
     private val intakeRepo = IntakeRepository(app.applicationContext)
     private val scheduler = IobAlarmScheduler(app.applicationContext)
+    private val libreRepo = LibreRepository(app.applicationContext)
+
+    /** Whether LibreLinkUp is connected (drives the Fetch button's visibility). */
+    val libreConnected: StateFlow<Boolean> = libreRepo.isConnected.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5_000), false,
+    )
+
+    /** On-demand glucose fetch (only when the user taps Fetch). */
+    fun fetchLibreGlucose(onResult: (LibreResult<LibreReading>) -> Unit) {
+        viewModelScope.launch { onResult(libreRepo.fetchLatest(System.currentTimeMillis() / 1000)) }
+    }
 
     val settings: StateFlow<AppSettings> = settingsRepo.settings.stateIn(
         viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings.Default,

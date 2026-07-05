@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +28,7 @@ class SettingsRepository(private val context: Context) {
         val ALERT_REARM_ON_RISE = booleanPreferencesKey("alert_rearm_on_rise")
         val ALERT_STYLE = stringPreferencesKey("alert_style")
         val DOSING_INCREMENT = doublePreferencesKey("dosing_increment")
+        val LIBRE_STALENESS_MIN = intPreferencesKey("libre_staleness_minutes")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
@@ -45,6 +47,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.ALERT_REARM_ON_RISE] = next.alertReArmOnRise
             p[Keys.ALERT_STYLE] = next.alertStyle.name
             p[Keys.DOSING_INCREMENT] = next.dosingIncrement
+            p[Keys.LIBRE_STALENESS_MIN] = next.libreStalenessMinutes
         }
     }
 
@@ -88,6 +91,8 @@ class SettingsRepository(private val context: Context) {
                 ?: AppSettings.Default.alertStyle,
             dosingIncrement = this[Keys.DOSING_INCREMENT]
                 ?: AppSettings.Default.dosingIncrement,
+            libreStalenessMinutes = this[Keys.LIBRE_STALENESS_MIN]
+                ?: AppSettings.Default.libreStalenessMinutes,
         )
     }
 }

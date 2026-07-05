@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Single-color silhouette for themed icons. Tinted by the system. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="1024" android:viewportHeight="1024">
+    <group android:pivotX="512" android:pivotY="512" android:scaleX="0.62" android:scaleY="0.62"
+        android:translateX="0" android:translateY="14">
+        <path android:fillColor="#000000"
+            android:pathData="M512 168 C512 168 720 430 720 606 A208 208 0 0 1 304 606 C304 430 512 168 512 168 Z" />
+    </group>
+</vector>

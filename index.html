@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBolus — Privacy Policy</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4ecd6;
+    --fg: #1a2418;
+    --fg-muted: #4c5a45;
+    --card: #ffffff;
+    --border: #e4e6d6;
+    --accent: #386641;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161c12;
+      --fg: #e9eedf;
+      --fg-muted: #b6c0aa;
+      --card: #1d2418;
+      --border: #39422f;
+      --accent: #a7c957;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 48px 20px 80px;
+  }
+  h1 {
+    font-size: 1.75rem;
+    margin-bottom: 4px;
+  }
+  .updated {
+    color: var(--fg-muted);
+    font-size: 0.9rem;
+    margin-bottom: 32px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin-bottom: 20px;
+  }
+  .disclaimer {
+    border-left: 4px solid var(--accent);
+  }
+  h2 {
+    font-size: 1.1rem;
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: var(--accent);
+  }
+  p { margin: 0 0 10px; }
+  p:last-child { margin-bottom: 0; }
+  ul { margin: 0; padding-left: 20px; }
+  li { margin-bottom: 6px; }
+  a { color: var(--accent); }
+  footer {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    margin-top: 40px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>EzBolus — Privacy Policy</h1>
+  <div class="updated">Last updated: July 2026</div>
+
+  <div class="card disclaimer">
+    <h2>Medical disclaimer</h2>
+    <p>EzBolus is a calculator, not a medical device. It is not reviewed or approved by any
+    regulator, and it does not know your medical history. Every dose it suggests is only as
+    good as the numbers you enter and the ratios you configure.</p>
+    <p>Always use the ICR, ISF, and target glucose values given to you by your own care
+    team — never guess. Review every suggested dose yourself before taking it, and never let
+    this app replace your care team's guidance.</p>
+  </div>
+
+  <div class="card">
+    <h2>What EzBolus stores</h2>
+    <p>Your dosing history, ratios, and settings are stored only on your device, in a local
+    database and preference store. We do not operate any server that receives, stores, or has
+    access to this data. Uninstalling the app removes it. The app also includes an in-app
+    export/import feature so you can back up or move your own data yourself.</p>
+  </div>
+
+  <div class="card">
+    <h2>LibreLinkUp (optional)</h2>
+    <p>If you choose to connect LibreLinkUp to pre-fill glucose readings, EzBolus talks
+    directly to LibreView's own LibreLinkUp servers using your account credentials — the same
+    servers the official LibreLinkUp app uses. We never see, receive, or route this traffic
+    through any server we control.</p>
+    <ul>
+      <li>Your password is used once to sign in and is never stored.</li>
+      <li>Your email and a session token are stored encrypted on your device (Android
+        EncryptedSharedPreferences / Keystore) so you don't have to sign in every time.</li>
+      <li>Disconnecting in Settings clears this stored session immediately.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Notifications and permissions</h2>
+    <p>EzBolus can optionally notify you when your insulin-on-board drops below a threshold
+    you set. This runs entirely on your device using Android's notification and alarm
+    scheduling APIs — no data leaves your device to make this work.</p>
+  </div>
+
+  <div class="card">
+    <h2>What we don't do</h2>
+    <ul>
+      <li>No analytics, tracking, or advertising SDKs.</li>
+      <li>No account creation or sign-in required to use the calculator.</li>
+      <li>No data is sold, shared, or transmitted to any third party we control.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Contact</h2>
+    <p>Questions about this policy or the app: <a href="mailto:morten@welcomebob.com">morten@welcomebob.com</a></p>
+  </div>
+
+  <footer>EzBolus is an independent, personally-built project and is not affiliated with
+  Abbott, FreeStyle Libre, or LibreView.</footer>
+</div>
+</body>
+</html>

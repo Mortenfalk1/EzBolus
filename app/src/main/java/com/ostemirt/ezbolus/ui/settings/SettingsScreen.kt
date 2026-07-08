@@ -22,7 +22,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -64,10 +63,11 @@ import androidx.compose.material3.TextButton
 import androidx.core.content.ContextCompat
 import com.ostemirt.ezbolus.data.export.ExportManager
 import com.ostemirt.ezbolus.data.libre.LibreResult
+import com.ostemirt.ezbolus.ui.components.DoubleField
+import com.ostemirt.ezbolus.ui.components.UnitSegmented
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import com.ostemirt.ezbolus.data.settings.CurveModelKind
-import com.ostemirt.ezbolus.data.settings.GlucoseUnit
 import com.ostemirt.ezbolus.data.settings.NotificationStyle
 import com.ostemirt.ezbolus.data.settings.supportedDosingIncrements
 import androidx.compose.ui.platform.LocalContext
@@ -77,6 +77,7 @@ import kotlin.math.round
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenAbout: () -> Unit,
     vm: SettingsViewModel = viewModel(),
 ) {
     val s by vm.state.collectAsStateWithLifecycle()
@@ -189,6 +190,16 @@ fun SettingsScreen(
                 onReArmChange = vm::setAlertReArm,
                 onStyleChange = vm::setAlertStyle,
             )
+
+            // About / privacy / medical disclaimer
+            SectionCard(title = "About") {
+                OutlinedButton(
+                    onClick = onOpenAbout,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("About & privacy") }
+            }
         }
     }
 }
@@ -632,28 +643,6 @@ private fun SectionCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UnitSegmented(current: GlucoseUnit, onChange: (GlucoseUnit) -> Unit) {
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-        GlucoseUnit.entries.forEachIndexed { index, unit ->
-            val selected = current == unit
-            SegmentedButton(
-                selected = selected,
-                onClick = { onChange(unit) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = GlucoseUnit.entries.size),
-                icon = { if (selected) Icon(Icons.Filled.Check, null) },
-                colors = SegmentedButtonDefaults.colors(
-                    activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                    activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    inactiveContainerColor = MaterialTheme.colorScheme.surface,
-                    inactiveContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            ) { Text(unit.label, fontSize = 13.sp) }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
 private fun CurveSegmented(
     current: CurveModelKind,
     onChange: (CurveModelKind) -> Unit,
@@ -790,60 +779,6 @@ private fun SettingRow(text: String, checked: Boolean, onCheckedChange: (Boolean
         )
     }
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DoubleField(
-    label: String,
-    value: Double,
-    suffix: String,
-    onCommit: (Double) -> Unit,
-) {
-    var text by remember(value) { mutableStateOf(formatDouble(value)) }
-    LaunchedEffect(value) { text = formatDouble(value) }
-
-    OutlinedTextField(
-        value = text,
-        onValueChange = { new ->
-            val filtered = new.replace(',', '.').filterNumericInput()
-            text = filtered
-            filtered.toDoubleOrNull()?.let { if (it > 0.0) onCommit(it) }
-        },
-        label = { Text(label, fontSize = 11.sp) },
-        trailingIcon = {
-            Text(
-                suffix,
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(end = 12.dp),
-            )
-        },
-        singleLine = true,
-        shape = RoundedCornerShape(12.dp),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        colors = OutlinedTextFieldDefaults.colors(
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    )
-}
-
-internal fun String.filterNumericInput(): String {
-    var seenDot = false
-    val sb = StringBuilder()
-    for (c in this) {
-        when {
-            c.isDigit() -> sb.append(c)
-            c == '.' && !seenDot -> { sb.append(c); seenDot = true }
-        }
-    }
-    return sb.toString()
-}
-
-private fun formatDouble(v: Double): String =
-    if (v == v.toLong().toDouble()) v.toLong().toString()
-    else "%.2f".format(v).trimEnd('0').trimEnd('.')
 
 private fun formatIncrement(v: Double): String = when (v) {
     1.0 -> "1 U (whole)"

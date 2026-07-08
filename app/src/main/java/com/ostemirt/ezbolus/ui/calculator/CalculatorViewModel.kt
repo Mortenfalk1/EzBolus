@@ -14,7 +14,7 @@ import com.ostemirt.ezbolus.engine.Dose
 import com.ostemirt.ezbolus.engine.IobRingState
 import com.ostemirt.ezbolus.engine.iobRingState
 import com.ostemirt.ezbolus.notify.IobAlarmScheduler
-import com.ostemirt.ezbolus.widget.updateIobWidget
+import com.ostemirt.ezbolus.widget.requestIobWidgetRefresh
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -99,7 +99,7 @@ class CalculatorViewModel(app: Application) : AndroidViewModel(app) {
                 carbsGrams = carbsGrams,
             )
             scheduler.reschedule()
-            updateIobWidget(getApplication())
+            requestIobWidgetRefresh(getApplication())
             onSaved(takenAt)
         }
     }
@@ -108,7 +108,7 @@ class CalculatorViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             intakeRepo.deleteAt(takenAt)
             scheduler.reschedule()
-            updateIobWidget(getApplication())
+            requestIobWidgetRefresh(getApplication())
         }
     }
 

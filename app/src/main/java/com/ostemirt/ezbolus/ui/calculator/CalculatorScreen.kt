@@ -1,5 +1,6 @@
 package com.ostemirt.ezbolus.ui.calculator
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -24,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Settings
@@ -102,6 +104,7 @@ fun CalculatorScreen(
     var glucoseText by remember { mutableStateOf("") }
     var result by remember { mutableStateOf<BolusResult?>(null) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    var warningText by remember { mutableStateOf<String?>(null) }
     var correctionOnly by remember { mutableStateOf(false) }
 
     val libreConnected by vm.libreConnected.collectAsStateWithLifecycle()
@@ -124,11 +127,15 @@ fun CalculatorScreen(
     // eases over rather than snapping. Manual swipes/dot taps keep the snappy default.
     val autoAdvanceSpec = tween<Float>(durationMillis = 650, easing = FastOutSlowInEasing)
 
+    // System back on the Dose page should return to Enter, not exit the app.
+    BackHandler(enabled = pagerState.currentPage == 1) { goToPage(0) }
+
     fun clearInputs() {
         carbsText = ""
         glucoseText = ""
         result = null
         errorText = null
+        warningText = null
         correctionOnly = false
         libreChip = null
     }
@@ -165,7 +172,7 @@ fun CalculatorScreen(
                 ),
                 actions = {
                     IconButton(onClick = onOpenHistory) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "History")
+                        Icon(Icons.Filled.History, contentDescription = "History")
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Filled.Settings, contentDescription = "Settings")
@@ -196,6 +203,7 @@ fun CalculatorScreen(
                         glucoseText = glucoseText,
                         correctionOnly = correctionOnly,
                         errorText = errorText,
+                        warningText = warningText,
                         libreConnected = libreConnected,
                         libreBusy = libreBusy,
                         libreChip = libreChip,
@@ -205,6 +213,9 @@ fun CalculatorScreen(
                         onGlucoseChange = { glucoseText = it.filterNumeric() },
                         onCalculate = {
                             errorText = null
+                            // Non-blocking: flags a likely unit mix-up or an unusually
+                            // large entry, but the calculation still proceeds either way.
+                            warningText = plausibilityWarning(carbsText, glucoseText, s.glucoseUnit)
                             when (val outcome = calculate(carbsText, glucoseText, s, iob)) {
                                 is CalcOutcome.Ok -> {
                                     result = outcome.result
@@ -228,6 +239,7 @@ fun CalculatorScreen(
                             // and slide back so the user can tweak them.
                             result = null
                             errorText = null
+                            warningText = null
                             correctionOnly = false
                             goToPage(0)
                         },
@@ -281,6 +293,7 @@ private fun InputPage(
     glucoseText: String,
     correctionOnly: Boolean,
     errorText: String?,
+    warningText: String?,
     libreConnected: Boolean,
     libreBusy: Boolean,
     libreChip: LibreChip?,
@@ -335,6 +348,13 @@ private fun InputPage(
             Text(
                 it,
                 color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        warningText?.let {
+            Text(
+                it,
+                color = MaterialTheme.colorScheme.tertiary,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -537,29 +557,17 @@ private fun PageIndicator(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CarbsField(text: String, onTextChange: (String) -> Unit, correctionOnly: Boolean) {
-    // Dashed border variant when we're in correction-only mode — matches design frame 3.
-    if (correctionOnly && text.isBlank()) {
-        // Show a placeholder-styled dashed card that still opens the keyboard.
-        OutlinedTextField(
-            value = text,
-            onValueChange = onTextChange,
-            label = { Text("Carbs (g) — leave empty for correction only", fontSize = 12.sp) },
-            placeholder = { Text("Correction only") },
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-            ),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        return
-    }
+    // Single call site: branching between two OutlinedTextFields based on `text` would
+    // swap the field's node identity on the very first keystroke (blank -> non-blank),
+    // dropping focus and dismissing the keyboard mid-type.
+    val showCorrectionPlaceholder = correctionOnly && text.isBlank()
     OutlinedTextField(
         value = text,
         onValueChange = onTextChange,
         label = { Text("Carbs (g) — leave empty for correction only", fontSize = 12.sp) },
+        placeholder = if (showCorrectionPlaceholder) {
+            { Text("Correction only") }
+        } else null,
         singleLine = true,
         shape = RoundedCornerShape(12.dp),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -647,6 +655,10 @@ private fun CalculateButton(enabled: Boolean, onClick: () -> Unit) {
 
 // ---------- Result card ----------
 
+// A dose above this is unusual enough to warrant one extra deliberate tap before
+// saving — catches a fat-fingered entry or a unit mix-up before it's logged.
+private const val LARGE_DOSE_CONFIRM_THRESHOLD_UNITS = 25.0
+
 @Composable
 private fun ResultCard(
     r: BolusResult,
@@ -682,6 +694,9 @@ private fun ResultCard(
     val dose = steps * increment
     val roundDownSelected = !onGrid && steps == floorSteps
     val roundUpSelected = !onGrid && steps == ceilSteps
+    // Re-armed whenever the dose itself changes (round choice or +/-), so switching
+    // to a smaller dose after triggering this doesn't leave a stale confirmation.
+    var confirmingLargeDose by remember(dose) { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -751,8 +766,23 @@ private fun ResultCard(
             SaveDoseButton(
                 dose = dose,
                 increment = increment,
-                onClick = { onConfirm(dose) },
+                onClick = {
+                    if (dose > LARGE_DOSE_CONFIRM_THRESHOLD_UNITS && !confirmingLargeDose) {
+                        confirmingLargeDose = true
+                    } else {
+                        onConfirm(dose)
+                    }
+                },
             )
+
+            if (confirmingLargeDose) {
+                LargeDoseConfirmBanner(
+                    dose = dose,
+                    increment = increment,
+                    onCancel = { confirmingLargeDose = false },
+                    onConfirm = { onConfirm(dose) },
+                )
+            }
 
             DismissDoseButton(onClick = onDismiss)
 
@@ -864,9 +894,12 @@ private fun DoseOption(
 
 /** The dose the user will save: big number centered, quiet −/+ on either side
  *  for manual fine-tuning by one pen step. Not filled green — the Save button
- *  below is the only strong accent. */
+ *  below is the only strong accent.
+ *
+ *  `internal` (not `private`): also reused by [com.ostemirt.ezbolus.ui.history]'s
+ *  retrospective manual-dose dialog so both entry points share one dose stepper. */
 @Composable
-private fun SelectedDoseAdjuster(
+internal fun SelectedDoseAdjuster(
     dose: Double,
     increment: Double,
     onDecrement: () -> Unit,
@@ -907,7 +940,7 @@ private fun SelectedDoseAdjuster(
 }
 
 @Composable
-private fun AdjustButton(
+internal fun AdjustButton(
     icon: ImageVector,
     contentDescription: String,
     enabled: Boolean,
@@ -930,8 +963,53 @@ private fun AdjustButton(
     }
 }
 
+/** One extra deliberate tap before saving an unusually large dose. */
 @Composable
-private fun DismissDoseButton(onClick: () -> Unit) {
+private fun LargeDoseConfirmBanner(
+    dose: Double,
+    increment: Double,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        ),
+    ) {
+        Column(
+            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                "${formatDose(dose, increment)} U is a large dose. Confirm you intend to take it.",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = onCancel,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Cancel") }
+                Button(
+                    onClick = onConfirm,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Confirm — save ${formatDose(dose, increment)} U") }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun DismissDoseButton(onClick: () -> Unit) {
     TextButton(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -946,13 +1024,21 @@ private fun DismissDoseButton(onClick: () -> Unit) {
 }
 
 @Composable
-private fun SaveDoseButton(dose: Double, increment: Double, onClick: () -> Unit) {
+internal fun SaveDoseButton(
+    dose: Double,
+    increment: Double,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -1044,7 +1130,28 @@ private fun calculate(
     }
 }
 
-private fun String.filterNumeric(): String {
+/**
+ * Soft, non-blocking plausibility check — catches likely typos or a mg/dL vs
+ * mmol/L unit mix-up without ever preventing a real (if unusual) dose from being
+ * calculated. Returns null when both entries look ordinary.
+ */
+private fun plausibilityWarning(carbsText: String, glucoseText: String, unit: GlucoseUnit): String? {
+    val glucose = glucoseText.toDoubleOrNull()
+    if (glucose != null) {
+        val (lo, hi) = if (unit == GlucoseUnit.MMOL_L) 1.1 to 33.3 else 20.0 to 600.0
+        if (glucose < lo || glucose > hi) {
+            return "That glucose value looks unusual for ${unit.label} — double-check you " +
+                "didn't mix up mg/dL and mmol/L."
+        }
+    }
+    val carbs = carbsText.toDoubleOrNull()
+    if (carbs != null && carbs > 200.0) {
+        return "That's an unusually large carb entry — double-check the amount before calculating."
+    }
+    return null
+}
+
+internal fun String.filterNumeric(): String {
     val n = replace(',', '.')
     var seenDot = false
     val sb = StringBuilder()

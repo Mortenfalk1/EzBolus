@@ -11,6 +11,7 @@ import com.ostemirt.ezbolus.data.settings.GlucoseUnit
 import com.ostemirt.ezbolus.data.settings.NotificationStyle
 import com.ostemirt.ezbolus.data.settings.SettingsRepository
 import com.ostemirt.ezbolus.notify.IobAlarmScheduler
+import com.ostemirt.ezbolus.widget.requestIobWidgetRefresh
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -38,6 +39,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         repo.update(transform)
         // Any setting change might affect crossing time or whether we alert at all.
         scheduler.reschedule()
+        // ...and action time / curve model directly change the IOB the widget shows.
+        requestIobWidgetRefresh(getApplication())
     }
 
     fun setIcr(v: Double) = launchUpdate { it.copy(icr = v) }

@@ -17,8 +17,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,11 +27,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,7 +51,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ostemirt.ezbolus.data.db.Intake
 import com.ostemirt.ezbolus.data.db.IntakeKind
+import com.ostemirt.ezbolus.ui.calculator.formatDose
 import com.ostemirt.ezbolus.ui.theme.LocalKindColors
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -55,6 +66,37 @@ fun HistoryScreen(
     vm: HistoryViewModel = viewModel(),
 ) {
     val intakes by vm.intakes.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    var showAddDialog by remember { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    if (showAddDialog) {
+        AddManualDoseDialog(
+            glucoseUnit = settings.glucoseUnit,
+            dosingIncrement = settings.dosingIncrement,
+            onDismiss = { showAddDialog = false },
+            onSave = { units, glucose, carbs, takenAt ->
+                vm.saveManualDose(
+                    units = units,
+                    glucose = glucose,
+                    glucoseUnit = settings.glucoseUnit,
+                    carbsGrams = carbs,
+                    takenAt = takenAt,
+                ) {
+                    showAddDialog = false
+                    scope.launch {
+                        val outcome = snackbar.showSnackbar(
+                            message = "Logged ${formatDose(units, settings.dosingIncrement)} U",
+                            actionLabel = "Undo",
+                            duration = SnackbarDuration.Short,
+                        )
+                        if (outcome == SnackbarResult.ActionPerformed) vm.undoSave(takenAt)
+                    }
+                }
+            },
+        )
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -65,14 +107,21 @@ fun HistoryScreen(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                     navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    IconButton(onClick = { showAddDialog = true }) {
+                        Icon(Icons.Filled.Add, contentDescription = "Log a past dose")
+                    }
+                },
             )
         },
+        snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         if (intakes.isEmpty()) {
             EmptyState(Modifier.padding(padding))
@@ -122,7 +171,7 @@ private fun EmptyState(modifier: Modifier) {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                Icons.Filled.Refresh,
+                Icons.Filled.History,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(34.dp),
